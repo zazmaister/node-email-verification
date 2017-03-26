@@ -207,6 +207,10 @@ module.exports = function(mongoose) {
   var insertTempUser = function(password, tempUserData, callback) {
     // password may or may not be hashed
     tempUserData[options.passwordFieldName] = password;
+    tempUserData[options.emailFieldName] = getNestedValue(tempUserData,options.emailFieldName);
+    tempUserData[options.firstNameFieldName] = getNestedValue(tempUserData,options.firstNameFieldName);
+    tempUserData[options.lastNameFieldName] = getNestedValue(tempUserData,options.lastNameFieldName);
+    
     var newTempUser = new options.tempUserModel(tempUserData);
 
     newTempUser.save(function(err, tempUser) {
@@ -239,24 +243,10 @@ module.exports = function(mongoose) {
 
     // create our mongoose query
     var query = {};
+    
+    query[options.emailFieldName] = getNestedValue(user, options.emailFieldName);
 
-    if(options.emailFieldName.split('.').length > 1){
-      var levels = options.emailFieldName.split('.');
-      query[levels[0]] = {};
-
-      var queryObj = query[levels[0]];
-      var userObj = user[levels[0]];
-      for(var i=0; i<levels.length; i++){
-        queryObj[levels[i+1]] = {};
-        queryObj = queryObj[levels[i+1]];
-        userObj = userObj[levels[i+1]];
-      }
-
-      queryObj = userObj;
-    }else {
-      query[options.emailFieldName] = user[options.emailFieldName];
-    }
-
+    console.log('QUERY---->', query);
     options.persistentUserModel.findOne(query, function(err, existingPersistentUser) {
       if (err) {
         return callback(err, null, null);
@@ -286,7 +276,7 @@ module.exports = function(mongoose) {
           tempUserData[options.URLFieldName] = randtoken.generate(options.URLLength);
 
           if (options.hashingFunction) {
-            return options.hashingFunction(tempUserData[options.passwordFieldName], tempUserData,
+            return options.hashingFunction(getNestedValue(tempUserData,options.passwordFieldName), tempUserData,
               insertTempUser, callback);
           } else {
             return insertTempUser(tempUserData[options.passwordFieldName], tempUserData, callback);
@@ -377,7 +367,7 @@ module.exports = function(mongoose) {
             }
 
             if (options.shouldSendConfirmation) {
-              sendConfirmationEmail(savedUser[options.emailFieldName], null);
+              sendConfirmationEmail(getNestedValue(savedUser, options.emailFieldName), null);
             }
             return callback(null, user);
           });
