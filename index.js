@@ -49,6 +49,7 @@ module.exports = function(mongoose) {
     tempUserCollection: 'temporary_users',
     emailFieldName: 'email',
     passwordFieldName: 'password',
+    emailGoogleFieldName: 'emailGoogle',
     URLFieldName: 'GENERATED_VERIFYING_URL',
     expirationTime: 86400,
 
@@ -246,7 +247,6 @@ module.exports = function(mongoose) {
     
     query[options.emailFieldName] = getNestedValue(user, options.emailFieldName);
 
-    console.log('QUERY---->', query);
     options.persistentUserModel.findOne(query, function(err, existingPersistentUser) {
       if (err) {
         return callback(err, null, null);
@@ -353,25 +353,56 @@ module.exports = function(mongoose) {
           user;
 
         delete userData[options.URLFieldName];
-        user = new User(userData);
+        
 
-        // save the temporary user to the persistent user collection
-        user.save(function(err, savedUser) {
-          if (err) {
-            return callback(err, null);
+        // check if any of soicial login records exists and if so then append data to it :)
+        var query = {}, query_one = {};
+        query[options.emailFieldName] = getNestedValue(userData, options.emailFieldName);
+        query_one[options.emailGoogleFieldName] = getNestedValue(userData, options.emailFieldName);
+        User.findOne({ $or: [ query, query_one ] }, function(err, existingUser){
+          if(!existingUser) {
+            // save the temporary user to the persistent user collection
+            user = new User(userData);
+            user.save(function(err, savedUser) {
+              if (err) {
+                return callback(err, null);
+              }
+
+              TempUser.remove(query, function(err) {
+                if (err) {
+                  return callback(err, null);
+                }
+
+                if (options.shouldSendConfirmation) {
+                  sendConfirmationEmail(getNestedValue(savedUser, options.emailFieldName), null);
+                }
+                return callback(null, user);
+              });
+            });
+          } else {
+            delete userData['_v'];
+            delete userData['_id'];
+            delete userData['created_at'];
+            delete userData['updated_at'];
+            User.findOneAndUpdate({ $or: [ query, query_one ] }, userData, {new: true}, function(err, user) {
+                if (err) {
+                  return callback(err, null);
+                }
+
+                TempUser.remove(query, function(err) {
+                  if (err) {
+                    return callback(err, null);
+                  }
+
+                  if (options.shouldSendConfirmation) {
+                    sendConfirmationEmail(getNestedValue(userData, options.emailFieldName), null);
+                  }
+                  return callback(null, user);
+                });
+              });
           }
-
-          TempUser.remove(query, function(err) {
-            if (err) {
-              return callback(err, null);
-            }
-
-            if (options.shouldSendConfirmation) {
-              sendConfirmationEmail(getNestedValue(savedUser, options.emailFieldName), null);
-            }
-            return callback(null, user);
-          });
         });
+        
 
 
         // temp user is not found (i.e. user accessed URL after data expired, or something else...)
